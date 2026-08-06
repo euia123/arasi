@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<link rel="manifest" href="manifest.json">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多機能ワールド時計＆アラーム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.4.4/luxon.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <style>
+        .glow-text {
+            text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-start p-4 sm:p-8 font-sans">
+
+    <!-- 通知モーダル -->
+    <div id="modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-center shadow-2xl animate-bounce">
+            <div class="text-amber-400 text-5xl mb-4"><i class="fa-solid fa-bell-ring"></i></div>
+            <h3 class="text-2xl font-bold mb-2">アラーム発動！</h3>
+            <p id="modal-msg" class="text-slate-300 mb-6">時間になりました。</p>
+            <button onclick="stopAlarm()" class="w-full bg-blue-600 hover:bg-blue-500 font-bold py-3 px-6 rounded-xl transition shadow-lg shadow-blue-600/30">
+                アラームを停止
+            </button>
+        </div>
+    </div>
+
+    <!-- メインコンテナ -->
+    <div class="w-full max-w-4xl space-y-6">
+        
+        <!-- ヘッダー -->
+        <header class="flex flex-col sm:flex-row justify-between items-center bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl p-6 shadow-xl">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-3">
+                    <i class="fa-solid fa-clock text-blue-500"></i> World Clock & Alarm
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">正確な世界時間と選べるアラーム音</p>
+            </div>
+            <div id="local-date" class="text-slate-400 font-medium mt-3 sm:mt-0 bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700/50">
+                読み込み中...
+            </div>
+        </header>
+
+        <!-- グリッドレイアウト -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- ローカル時計＆世界時計カード -->
+            <div class="bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-blue-400">
+                        <i class="fa-solid fa-globe"></i> 現在地 / ローカル時間
+                    </h2>
+                    <div id="local-time" class="text-4xl sm:text-5xl font-mono font-bold tracking-wider glow-text mb-2">
+                        00:00:00
+                    </div>
+                    <div id="local-tz" class="text-xs text-slate-400">タイムゾーン: 検出中...</div>
+                </div>
+
+                <!-- 座標から時間取得セクション -->
+                <div class="mt-8 pt-6 border-t border-slate-800">
+                    <h3 class="text-sm font-semibold mb-3 flex items-center gap-2 text-emerald-400">
+                        <i class="fa-solid fa-map-location-dot"></i> Googleマップ座標から時間を表示
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2 mb-2">
+                        <input type="number" id="lat-input" step="any" placeholder="緯度 (例: 35.6812)" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                        <input type="number" id="lon-input" step="any" placeholder="経度 (例: 139.7671)" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <button onclick="calculateCoordTime()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold py-2 rounded-lg transition mb-3">
+                        この場所の時間を計算
+                    </button>
+                    <div id="coord-result" class="bg-slate-950/60 p-3 rounded-lg border border-slate-800 text-sm hidden">
+                        <div id="coord-time" class="font-mono text-lg font-bold text-emerald-300">--:--:--</div>
+                        <div id="coord-info" class="text-xs text-slate-400 mt-1">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- アラーム設定カード -->
+            <div class="bg-slate-900/60 backdrop-blur border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-amber-400">
+                        <i class="fa-solid fa-bell"></i> アラーム設定
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">アラーム時間</label>
+                            <input type="time" id="alarm-time" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-lg font-mono focus:outline-none focus:border-amber-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">アラーム音源の選択</label>
+                            <select id="alarm-sound-select" onchange="handleSoundSourceChange()" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500 mb-2">
+                                <option value="preset-digital">🔔 デジタル電子音</option>
+                                <option value="preset-forest">🌲 森の自然音 (鳥のさえずり)</option>
+                                <option value="preset-waves">🌊 海の波音</option>
+                                <option value="custom-video">🎬 お手持ちの動画ファイル (音声のみ)</option>
+                            </select>
+                        </div>
+
+                        <!-- カスタム動画選択フィールド (切り替え用) -->
+                        <div id="custom-video-container" class="hidden">
+                            <label class="block text-xs text-slate-400 mb-1">動画ファイル選択</label>
+                            <input type="file" id="video-file" accept="video/*" class="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-800 file:text-amber-400 hover:file:bg-slate-700 cursor-pointer">
+                            <p class="text-[10px] text-slate-500 mt-1">※映像は表示されず、音声だけが流れます。</p>
+                        </div>
+
+                        <!-- 隠しオーディオ/ビデオ要素 -->
+                        <audio id="alarm-audio" class="hidden" loop></audio>
+                        <video id="alarm-video" class="hidden" loop></video>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-slate-800">
+                    <div id="active-alarm-status" class="text-xs text-slate-400 mb-3 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-slate-600"></span> アラーム未設定
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="setAlarm()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold py-3 px-4 rounded-xl transition shadow-lg shadow-amber-600/20">
+                            アラームをセット
+                        </button>
+                        <button onclick="cancelAlarm()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-4 rounded-xl transition">
+                            解除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const { DateTime } = luxon;
+
+        let targetAlarmTime = null;
+        let alarmActive = false;
+        let customAudioURL = null;
+        let activeCoord = null;
+
+        // Web Audio API を用いた高品質な標準アラーム音・自然音の生成
+        let audioCtx = null;
+        let oscillatorInterval = null;
+
+        function initAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // デジタルアラーム音のビープ音パターン
+        function playDigitalBeep() {
+            initAudioContext();
+            if (oscillatorInterval) clearInterval(oscillatorInterval);
+
+            const beep = () => {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.3);
+                } catch(e) {}
+            };
+
+            beep();
+            oscillatorInterval = setInterval(beep, 600);
+        }
+
+        // 自然音（鳥のさえずり風のトーン変化）
+        function playForestSound() {
+            initAudioContext();
+            if (oscillatorInterval) clearInterval(oscillatorInterval);
+
+            const chirp = () => {
+                try {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    const now = audioCtx.currentTime;
+                    osc.frequency.setValueAtTime(1500, now);
+                    osc.frequency.exponentialRampToValueAtTime(2500, now + 0.15);
+                    osc.frequency.exponentialRampToValueAtTime(1800, now + 0.3);
+                    
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.linearRampToValueAtTime(0.0, now + 0.3);
+                    
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } catch(e) {}
+            };
+
+            chirp();
+            oscillatorInterval = setInterval(chirp, 1200);
+        }
+
+        // 波音風のホワイトノイズフィルター処理
+        let noiseNode = null;
+        let noiseGain = null;
+        function playWavesSound() {
+            initAudioContext();
+            if (oscillatorInterval) clearInterval(oscillatorInterval);
+
+            try {
+                const bufferSize = audioCtx.sampleRate * 2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(400, audioCtx.currentTime);
+
+                noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+                noise.start();
+                noiseNode = noise;
+            } catch(e) {}
+        }
+
+        function stopGeneratedSounds() {
+            if (oscillatorInterval) {
+                clearInterval(oscillatorInterval);
+                oscillatorInterval = null;
+            }
+            if (noiseNode) {
+                try { noiseNode.stop(); } catch(e) {}
+                noiseNode = null;
+            }
+        }
+
+        // 時計のメインループ
+        function updateClocks() {
+            const now = DateTime.now();
+            
+            // ローカル時計更新
+            document.getElementById('local-time').innerText = now.toFormat('HH:mm:ss');
+            document.getElementById('local-date').innerText = now.toFormat('yyyy年MM月dd日 (ccc)', { locale: 'ja' });
+            document.getElementById('local-tz').innerText = `タイムゾーン: ${now.zoneName} (UTC ${now.toFormat('ZZ')})`;
+
+            // アラームチェック
+            if (alarmActive && targetAlarmTime) {
+                const currentTimeStr = now.toFormat('HH:mm');
+                if (currentTimeStr === targetAlarmTime && now.second === 0) {
+                    triggerAlarm();
+                }
+            }
+
+            // 座標時間が設定されている場合の更新
+            if (activeCoord) {
+                const coordNow = DateTime.now().setZone(activeCoord.zone);
+                document.getElementById('coord-time').innerText = coordNow.toFormat('HH:mm:ss');
+            }
+        }
+
+        setInterval(updateClocks, 1000);
+        updateClocks();
+
+        // 選択された音源タイプの切り替え
+        function handleSoundSourceChange() {
+            const soundType = document.getElementById('alarm-sound-select').value;
+            const videoContainer = document.getElementById('custom-video-container');
+            if (soundType === 'custom-video') {
+                videoContainer.classList.remove('hidden');
+            } else {
+                videoContainer.classList.add('hidden');
+            }
+        }
+
+        // 動画ファイル選択時の処理
+        document.getElementById('video-file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (customAudioURL) {
+                    URL.revokeObjectURL(customAudioURL);
+                }
+                customAudioURL = URL.createObjectURL(file);
+                const videoElem = document.getElementById('alarm-video');
+                videoElem.src = customAudioURL;
+                videoElem.load();
+            }
+        });
+
+        // アラームセット
+        function setAlarm() {
+            const timeInput = document.getElementById('alarm-time').value;
+            if (!timeInput) {
+                alert('アラームの時間を設定してください。');
+                return;
+            }
+
+            targetAlarmTime = timeInput;
+            alarmActive = true;
+            
+            const statusElem = document.getElementById('active-alarm-status');
+            statusElem.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> アラーム有効: ${targetAlarmTime}`;
+            alert(`アラームを ${targetAlarmTime} にセットしました。`);
+        }
+
+        // アラーム解除
+        function cancelAlarm() {
+            alarmActive = false;
+            targetAlarmTime = null;
+            const statusElem = document.getElementById('active-alarm-status');
+            statusElem.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-600"></span> アラーム未設定`;
+            
+            stopGeneratedSounds();
+            const videoElem = document.getElementById('alarm-video');
+            videoElem.pause();
+            videoElem.currentTime = 0;
+            
+            document.getElementById('modal').classList.add('hidden');
+            alert('アラームを解除しました。');
+        }
+
+        // アラーム発動
+        function triggerAlarm() {
+            alarmActive = false;
+            document.getElementById('modal-msg').innerText = `設定時間 ${targetAlarmTime} になりました！`;
+            document.getElementById('modal').classList.remove('hidden');
+
+            const soundType = document.getElementById('alarm-sound-select').value;
+            
+            if (soundType === 'preset-digital') {
+                playDigitalBeep();
+            } else if (soundType === 'preset-forest') {
+                playForestSound();
+            } else if (soundType === 'preset-waves') {
+                playWavesSound();
+            } else if (soundType === 'custom-video') {
+                const videoElem = document.getElementById('alarm-video');
+                videoElem.currentTime = 0;
+                videoElem.play().catch(err => {
+                    console.log("動画の音声再生がブロックされました:", err);
+                });
+            }
+        }
+
+        // アラーム停止ボタン
+        function stopAlarm() {
+            stopGeneratedSounds();
+            const videoElem = document.getElementById('alarm-video');
+            videoElem.pause();
+            videoElem.currentTime = 0;
+            
+            document.getElementById('modal').classList.add('hidden');
+            
+            const statusElem = document.getElementById('active-alarm-status');
+            statusElem.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-600"></span> アラーム未設定`;
+        }
+
+        // 座標からタイムゾーンを計算
+        function calculateCoordTime() {
+            const lat = parseFloat(document.getElementById('lat-input').value);
+            const lon = parseFloat(document.getElementById('lon-input').value);
+
+            if (isNaN(lat) || isNaN(lon)) {
+                alert('有効な緯度と経度を入力してください。');
+                return;
+            }
+
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                alert('緯度は -90〜90、経度は -180〜180 の範囲で入力してください。');
+                return;
+            }
+
+            let estimatedOffsetHours = Math.round(lon / 15);
+            let sign = estimatedOffsetHours >= 0 ? '+' : '';
+            let formattedOffset = `UTC${sign}${estimatedOffsetHours}:00`;
+
+            let zoneName = `Etc/GMT${estimatedOffsetHours >= 0 ? '-' + Math.abs(estimatedOffsetHours) : '+' + Math.abs(estimatedOffsetHours)}`;
+
+            activeCoord = {
+                lat: lat,
+                lon: lon,
+                zone: zoneName
+            };
+
+            const resultContainer = document.getElementById('coord-result');
+            resultContainer.classList.remove('hidden');
+            document.getElementById('coord-info').innerText = `緯度: ${lat}, 経度: ${lon} (推定オフセット: ${formattedOffset})`;
+            
+            const coordNow = DateTime.now().setZone(activeCoord.zone);
+            document.getElementById('coord-time').innerText = coordNow.toFormat('HH:mm:ss');
+        }
+    </script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then((reg) => {
+          console.log('Service Worker 登録成功！', reg.scope);
+        })
+        .catch((err) => {
+          console.log('Service Worker 登録失敗...', err);
+        });
+    });
+  }
+</script>
+
+</body>
+</html>
+
