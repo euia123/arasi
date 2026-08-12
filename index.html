@@ -458,6 +458,27 @@ canvas{
             </div>
 
             <div class="setting-group">
+                <label>敵指定</label>
+                <select id="settingEnemyType">
+                    <option value="random" selected>ランダム</option>
+                    <option value="うおw">うおw (通常移動)</option>
+                    <option value="きちーw">きちーw (ビーム)</option>
+                    <option value="どわーw">どわーw (ホーミング弾)</option>
+                    <option value="くかw">くかw (全方位弾)</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label>ボスの攻撃指定</label>
+                <select id="settingBossAttack">
+                    <option value="random" selected>ランダム</option>
+                    <option value="0">レーザー弾幕</option>
+                    <option value="1">ホーミング連続弾</option>
+                    <option value="2">突撃アタック</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
                 <label>初期の敵の移動スピード</label>
                 <input type="number" id="settingEnemySpeed" value="1" min="0.1" max="5" step="0.1">
             </div>
@@ -577,6 +598,8 @@ let configEnemyInterval = 42; // フレーム数 (0.7秒 * 60)
 let configBossInterval = 180; // フレーム数 (3秒 * 60)
 let configInvDuration = 1000; // ミリ秒 (1秒)
 let configBulletCount = "3";
+let configSelectedEnemy = "random";
+let configSelectedBossAttack = "random";
 let configEnemySpeedVal = 1;
 let configPlayerSpeedVal = 4;
 
@@ -613,7 +636,7 @@ document.getElementById("stickBase");
 const stick =
 document.getElementById("stick");
 
-    const fireBtn =
+const fireBtn =
 document.getElementById("fireBtn");
 
 let moveX = 0;
@@ -676,6 +699,8 @@ function applySettings() {
     configInvDuration = isNaN(invSec) ? 1000 : invSec * 1000;
 
     configBulletCount = document.getElementById("settingCount").value;
+    configSelectedEnemy = document.getElementById("settingEnemyType").value;
+    configSelectedBossAttack = document.getElementById("settingBossAttack").value;
     configEnemySpeedVal = parseFloat(document.getElementById("settingEnemySpeed").value) || 1;
     configPlayerSpeedVal = parseFloat(document.getElementById("settingPlayerSpeed").value) || 4;
 
@@ -1066,14 +1091,14 @@ function spawnEnemy(){
 
     if(bossMode || !gameStarted || isGameOver || isPaused) return;
 
+    let chosenText = configSelectedEnemy;
+    if (chosenText === "random") {
+        chosenText = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+    }
+
     enemies.push({
 
-        text:
-        enemyTypes[
-            Math.floor(
-                Math.random()*4
-            )
-        ],
+        text: chosenText,
 
         x:
         canvas.width + 100,
@@ -1104,7 +1129,7 @@ setInterval(()=>{
 
 }, 700);
 
-    function updateEnemies(){
+function updateEnemies(){
 
     for(
         let i=
@@ -1144,7 +1169,7 @@ setInterval(()=>{
 
         if(e.text==="きちーw"){
 
-            if(e.attack > configEnemyInterval && canShoot()){
+    if(e.attack > configEnemyInterval && canShoot()){
 
                 e.attack = 0;
                 e.shotCount++;
@@ -1597,10 +1622,12 @@ function updateBoss(){
 
         boss.timer = 0;
 
-        const attack =
-        Math.floor(
-        Math.random()*3
-        );
+        let attack = configSelectedBossAttack;
+        if (attack === "random") {
+            attack = Math.floor(Math.random() * 3);
+        } else {
+            attack = parseInt(attack);
+        }
 
         if(attack===0){
 
@@ -1801,13 +1828,6 @@ fireBtn.addEventListener(
 );
 
 fireBtn.addEventListener(
-"touchend",
-()=>{
-    firing = false;
-}
-);
-
-    fireBtn.addEventListener(
 "touchend",
 ()=>{
     firing = false;
@@ -2028,7 +2048,7 @@ updateStage();
 loop();
 
 </script>
-    
+
     <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
